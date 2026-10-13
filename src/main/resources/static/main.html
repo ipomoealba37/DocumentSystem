@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>文档信息管理系统 - 主界面</title>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.0/js/bootstrap.bundle.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #f5f7fa;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        .content-area {
+            flex: 1;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%);
+            color: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        }
+        .user-info {
+            padding: 30px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .user-avatar {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-size: 36px;
+        }
+        .nav-menu {
+            list-style: none;
+            padding: 0;
+        }
+        .nav-menu li a {
+            display: block;
+            padding: 15px 25px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .nav-menu li a:hover, .nav-menu li a.active {
+            background: #3498db;
+            color: white;
+            padding-left: 30px;
+        }
+        .nav-menu li a i {
+            margin-right: 10px;
+            width: 20px;
+        }
+        .card-stats {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- 左侧内容区 -->
+    <div class="content-area" id="contentArea">
+        <div class="card-stats">
+            <h4>欢迎使用文档管理系统</h4>
+            <p>请从右侧菜单选择功能</p>
+        </div>
+    </div>
+
+    <!-- 右侧菜单区 -->
+    <div class="sidebar">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <h4 id="username">用户</h4>
+            <p>文档管理系统</p>
+            <button class="btn btn-sm btn-outline-light" id="logoutBtn">
+                <i class="fas fa-sign-out-alt"></i> 注销
+            </button>
+        </div>
+        <ul class="nav-menu">
+            <li><a href="#" data-module="document" class="active"><i class="fas fa-file-alt"></i> 文档管理</a></li>
+            <li><a href="#" data-module="recycle"><i class="fas fa-trash-restore"></i> 回收站</a></li>
+            <li><a href="#" data-module="stats"><i class="fas fa-chart-line"></i> 统计分析</a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- 添加/编辑文档模态框 -->
+<div class="modal fade" id="docModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">添加文档</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="docForm">
+                    <input type="hidden" id="docId">
+                    <div class="form-group">
+                        <label>标题</label>
+                        <input type="text" class="form-control" id="docTitle" required>
+                    </div>
+                    <div class="form-group">
+                        <label>类型</label>
+                        <select class="form-control" id="docType">
+                            <option>技术文档</option><option>商务文档</option><option>个人文档</option><option>学习资料</option><option>其他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>作者</label>
+                        <input type="text" class="form-control" id="docAuthor">
+                    </div>
+                    <div class="form-group">
+                        <label>内容描述</label>
+                        <textarea class="form-control" id="docContent" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>上传文件</label>
+                        <input type="file" class="form-control-file" id="docFile" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveDocBtn">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 全局变量
+    let currentUser = '';
+
+    // 页面加载后执行
+    $(document).ready(function() {
+        checkLogin();
+        bindMenuEvents();
+        bindLogout();
+        // 默认加载文档管理模块
+        loadModule('document');
+        // 模态框保存按钮事件
+        $('#saveDocBtn').click(function() {
+            const id = $('#docId').val();
+            const title = $('#docTitle').val();
+            const type = $('#docType').val();
+            const author = $('#docAuthor').val();
+            const fileInput = $('#docFile')[0];
+
+            // 简单校验
+            if (!title) {
+                alert('请输入标题');
+                return;
+            }
+            if (!type) {
+                alert('请选择类型');
+                return;
+            }
+
+            // 如果是编辑模式（有 id）
+            if (id) {
+                // 编辑：用 JSON 提交，不改文件
+                const documentData = {
+                    id: parseInt(id),
+                    title: title,
+                    type: type,
+                    author: author,
+                    content: $('#docContent').val() || ''
+                };
+                fetch('/api/document/update', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(documentData)
+                }).then(res => res.json()).then(data => {
+                    if (data.code === 200) {
+                        $('#docModal').modal('hide');
+                        alert('修改成功');
+                        loadDocuments();
+                    } else {
+                        alert('修改失败：' + (data.msg || data.message));
+                    }
+                });
+                return;
+            }
+
+            // 添加模式：必须上传文件
+            if (!fileInput || fileInput.files.length === 0) {
+                alert('请选择要上传的文件');
+                return;
+            }
+
+            // 添加：用 FormData 提交（包含文件）
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('type', type);
+            formData.append('author', author);
+            formData.append('file', fileInput.files[0]);
+
+            fetch('/api/document/add', {
+                method: 'POST',
+                body: formData
+            }).then(res => res.json()).then(data => {
+                if (data.code === 200) {
+                    $('#docModal').modal('hide');
+                    alert('添加成功');
+                    loadDocuments();
+                } else {
+                    alert('添加失败：' + (data.msg || data.message));
+                }
+            });
+        });
+
+
+    });
+
+    function checkLogin() {
+        fetch('/api/user/current', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    currentUser = data.username;
+                    $('#username').text(currentUser);
+                } else {
+                    window.location.href = 'login.html';
+                }
+            })
+            .catch(() => window.location.href = 'login.html');
+    }
+
+    function bindMenuEvents() {
+        $('.nav-menu a').click(function(e) {
+            e.preventDefault();
+            const module = $(this).data('module');
+            $('.nav-menu a').removeClass('active');
+            $(this).addClass('active');
+            loadModule(module);
+        });
+    }
+
+    function bindLogout() {
+        $('#logoutBtn').click(async function() {
+            await fetch('/api/user/logout', { method: 'POST', credentials: 'include' });
+            window.location.href = 'login.html';
+        });
+    }
+
+    function loadModule(module) {
+        if (module === 'document') {
+            loadDocumentManagement();
+        } else if (module === 'recycle') {
+            loadRecycleManagement();
+        } else if (module === 'stats') {
+            loadStatistics();
+        }
+    }
+
+    //  文档管理模块
+    function loadDocumentManagement() {
+        $('#contentArea').html(`
+        <div class="card-stats">
+            <h4><i class="fas fa-file-alt"></i> 文档管理</h4>
+            <hr>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchKeyword" placeholder="搜索标题/作者/类型">
+                        <div class="input-group-append">
+                            <button class="btn btn-primary" onclick="searchDocuments()">搜索</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 text-right">
+                    <button class="btn btn-success" onclick="showAddModal()">+ 添加文档</button>
+                    <button class="btn btn-danger" onclick="batchDelete()">批量删除</button>
+                    <button type="button" class="btn btn-info" id="aiSummaryBtn">AI 生成摘要</button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="thead-light">
+                        <tr>
+                            <th width="40"><input type="checkbox" id="selectAll"></th>
+                            <th>ID</th><th>标题</th><th>预览</th><th>类型</th><th>作者</th><th>大小(KB)</th><th>创建时间</th><th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="docTableBody">
+                        <tr><td colspan="9" class="text-center">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `);
+        loadDocuments();
+
+        // 绑定 AI 摘要按钮事件
+        $('#aiSummaryBtn').off('click').on('click', function(e) {
+            e.preventDefault();
+            const content = $('#docContent').val();
+            if (!content) {
+                alert('请先在文档编辑框中填写内容，或打开一个文档进行编辑');
+                return;
+            }
+            fetch('/api/ai/summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.summary) {
+                        alert('摘要生成成功！\n' + data.summary);
+                        // 如果有显示摘要的输入框，可赋值：
+                        // $('#docSummary').val(data.summary);
+                    } else {
+                        alert('摘要生成失败：' + (data.msg || '未知错误'));
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('请求失败，请查看控制台');
+                });
+        });
+    }
+
+    function loadDocuments(keyword = '') {
+        let url = keyword ? `/api/document/search?keyword=${encodeURIComponent(keyword)}` : '/api/document/list';
+        fetch(url, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    renderDocTable(data.data || []);
+                } else {
+                    alert('加载失败：' + data.message);
+                }
+            });
+    }
+
+    function renderDocTable(docs) {
+        const tbody = $('#docTableBody');
+        if (!docs.length) {
+            tbody.html('<tr><td colspan="9" class="text-center">暂无数据</td></tr>');
+            return;
+        }
+        let html = '';
+        docs.forEach(doc => {
+            // 判断是否有文件路径，如果有就显示图片/下载按钮
+            const hasFile = doc.filePath && doc.filePath !== '';
+            html += `
+            <tr>
+                <td><input type="checkbox" class="docCheckbox" value="${doc.id}"></td>
+                <td>${doc.id}</td>
+                <td>${escapeHtml(doc.title)}</td>
+                <td>
+                    ${hasFile ? `<img src="${doc.filePath}" style="max-width:60px; max-height:60px; border-radius:4px; object-fit:cover; cursor:pointer;" onclick="window.open('${doc.filePath}')" />` : '无'}
+                </td>
+                <td>${doc.type}</td>
+                <td>${doc.author || '-'}</td>
+                <td>${doc.fileSize || 0}</td>
+                <td>${formatDate(doc.createTime)}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning" onclick="editDocument(${doc.id})">编辑</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteDocument(${doc.id})">删除</button>
+                    ${hasFile ? `<button class="btn btn-sm btn-info" onclick="downloadFile('${doc.filePath}')">下载</button>` : ''}
+                </td>
+            </tr>
+        `;
+        });
+        tbody.html(html);
+
+        // 全选事件（保持不变）
+        $('#selectAll').off('click').on('click', function() {
+            $('.docCheckbox').prop('checked', $(this).prop('checked'));
+        });
+    }
+
+    function searchDocuments() {
+        const keyword = $('#searchKeyword').val();
+        loadDocuments(keyword);
+    }
+
+    function showAddModal() {
+        $('#modalTitle').text('添加文档');
+        $('#docId').val('');
+        $('#docTitle').val('');
+        $('#docType').val('技术文档');
+        $('#docAuthor').val('');
+        $('#docContent').val('');
+        $('#docFileSize').val('0');
+        $('#docModal').modal('show');
+    }
+
+    function editDocument(id) {
+        // 先从列表中找到文档数据
+        fetch('/api/document/list', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const doc = data.data.find(d => d.id === id);
+                    if (doc) {
+                        $('#modalTitle').text('编辑文档');
+                        $('#docId').val(doc.id);
+                        $('#docTitle').val(doc.title);
+                        $('#docType').val(doc.type);
+                        $('#docAuthor').val(doc.author || '');
+                        $('#docContent').val(doc.content || '');
+                        $('#docFileSize').val(doc.fileSize || 0);
+                        $('#docModal').modal('show');
+                    } else {
+                        alert('未找到文档');
+                    }
+                }
+            });
+    }
+
+    function deleteDocument(id) {
+        if (!confirm('确定要删除该文档吗？会移到回收站')) return;
+        fetch(`/api/document/delete/${id}`, { method: 'DELETE', credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    alert('已移至回收站');
+                    loadDocuments();
+                } else {
+                    alert('删除失败');
+                }
+            });
+    }
+
+    function batchDelete() {
+        const ids = [];
+        $('.docCheckbox:checked').each(function() { ids.push(parseInt($(this).val())); });
+        if (ids.length === 0) { alert('请先选择文档'); return; }
+        if (!confirm(`确定要删除选中的 ${ids.length} 个文档吗？`)) return;
+        fetch('/api/document/deleteBatch', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify(ids)
+        }).then(res => res.json()).then(data => {
+            if (data.code === 200) {
+                alert('批量删除成功');
+                loadDocuments();
+            } else {
+                alert('批量删除失败');
+            }
+        });
+    }
+
+    // 回收站模块
+    function loadRecycleManagement() {
+        $('#contentArea').html(`
+            <div class="card-stats">
+                <h4><i class="fas fa-trash-restore"></i> 回收站</h4>
+                <hr>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="recycleSearchKeyword" placeholder="搜索已删除文档">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary" onclick="searchRecycle()">搜索</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-right">
+                        <button class="btn btn-success" onclick="restoreSelected()">批量恢复</button>
+                        <button class="btn btn-danger" onclick="permanentDeleteSelected()">永久删除</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="thead-light">
+                            <tr><th width="40"><input type="checkbox" id="selectAllRecycle"></th><th>ID</th><th>标题</th><th>类型</th><th>作者</th><th>删除时间</th><th>操作</th></tr>
+                        </thead>
+                        <tbody id="recycleTableBody"><tr><td colspan="7">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        `);
+        loadRecycleList();
+    }
+
+    function loadRecycleList(keyword = '') {
+        let url = keyword ? `/api/document/recycle/search?keyword=${encodeURIComponent(keyword)}` : '/api/document/recycle/list';
+        fetch(url, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    renderRecycleTable(data.data || []);
+                } else {
+                    alert('加载回收站失败');
+                }
+            });
+    }
+
+    function renderRecycleTable(docs) {
+        const tbody = $('#recycleTableBody');
+        if (!docs.length) {
+            tbody.html('<tr><td colspan="7">回收站为空</td></tr>');
+            return;
+        }
+        let html = '';
+        docs.forEach(doc => {
+            html += `
+                <tr>
+                    <td><input type="checkbox" class="recycleCheckbox" value="${doc.id}"></td>
+                    <td>${doc.id}</td>
+                    <td>${escapeHtml(doc.title)}</td>
+                    <td>${doc.type}</td>
+                    <td>${doc.author || '-'}</td>
+                    <td>${formatDateTime(doc.deletedTime)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="restoreDocument(${doc.id})">恢复</button>
+                        <button class="btn btn-sm btn-danger" onclick="permanentDeleteDocument(${doc.id})">永久删除</button>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.html(html);
+        $('#selectAllRecycle').off('click').on('click', function() {
+            $('.recycleCheckbox').prop('checked', $(this).prop('checked'));
+        });
+    }
+
+    function searchRecycle() {
+        const keyword = $('#recycleSearchKeyword').val();
+        loadRecycleList(keyword);
+    }
+
+    function restoreDocument(id) {
+        if (!confirm('恢复后文档将回到正常列表')) return;
+        fetch(`/api/document/recycle/restore/${id}`, { method: 'PUT', credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    alert('恢复成功');
+                    loadRecycleList();
+                } else {
+                    alert('恢复失败');
+                }
+            });
+    }
+
+    function restoreSelected() {
+        const ids = [];
+        $('.recycleCheckbox:checked').each(function() { ids.push(parseInt($(this).val())); });
+        if (ids.length === 0) { alert('请选择要恢复的文档'); return; }
+        if (!confirm(`确定恢复选中的 ${ids.length} 个文档吗？`)) return;
+        fetch('/api/document/recycle/restoreBatch', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify(ids)
+        }).then(res => res.json()).then(data => {
+            if (data.code === 200) {
+                alert('批量恢复成功');
+                loadRecycleList();
+            } else {
+                alert('批量恢复失败');
+            }
+        });
+    }
+
+    function permanentDeleteDocument(id) {
+        if (!confirm('⚠️ 永久删除无法恢复，确定删除？')) return;
+        fetch(`/api/document/recycle/permanent/${id}`, { method: 'DELETE', credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    alert('永久删除成功');
+                    loadRecycleList();
+                } else {
+                    alert('删除失败');
+                }
+            });
+    }
+
+    function permanentDeleteSelected() {
+        const ids = [];
+        $('.recycleCheckbox:checked').each(function() { ids.push(parseInt($(this).val())); });
+        if (ids.length === 0) { alert('请选择要永久删除的文档'); return; }
+        if (!confirm(`⚠️ 永久删除选中的 ${ids.length} 个文档，无法恢复！确定吗？`)) return;
+        fetch('/api/document/recycle/permanentBatch', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify(ids)
+        }).then(res => res.json()).then(data => {
+            if (data.code === 200) {
+                alert('永久删除成功');
+                loadRecycleList();
+            } else {
+                alert('删除失败');
+            }
+        });
+    }
+
+    // 统计分析模块
+    function loadStatistics() {
+        $('#contentArea').html(`<div class="card-stats"><h4><i class="fas fa-chart-line"></i> 统计分析</h4><hr><div id="statsContent">加载中...</div></div>`);
+        fetch('/api/document/list', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code !== 200) return;
+                const docs = data.data || [];
+                const total = docs.length;
+                const totalSize = docs.reduce((sum, d) => sum + (d.fileSize || 0), 0);
+                const avgSize = total ? (totalSize / total).toFixed(1) : 0;
+                // 按类型统计
+                const typeMap = {};
+                docs.forEach(d => { typeMap[d.type] = (typeMap[d.type] || 0) + 1; });
+                let typeHtml = '<h5>文档类型分布</h5><ul>';
+                for (const [type, count] of Object.entries(typeMap)) {
+                    typeHtml += `<li>${type}: ${count} 篇</li>`;
+                }
+                typeHtml += '</ul>';
+                const html = `
+                    <div class="row">
+                        <div class="col-md-4"><div class="card-stats text-center"><h2>${total}</h2><p>总文档数</p></div></div>
+                        <div class="col-md-4"><div class="card-stats text-center"><h2>${totalSize}</h2><p>总大小(KB)</p></div></div>
+                        <div class="col-md-4"><div class="card-stats text-center"><h2>${avgSize}</h2><p>平均大小(KB)</p></div></div>
+                    </div>
+                    ${typeHtml}
+                `;
+                $('#statsContent').html(html);
+            });
+    }
+
+    // 辅助函数
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+    }
+    function formatDateTime(dateStr) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    function downloadFile(filePath) {
+        if (!filePath) {
+            alert('该文档没有关联文件');
+            return;
+        }
+        // 在新窗口打开文件，浏览器会自动预览图片/PDF，或者触发下载
+        window.open(filePath, '_blank');
+    }
+
+
+</script>
+</body>
+
+
+
+
+</html>
