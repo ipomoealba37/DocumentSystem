@@ -1,0 +1,76 @@
+### 1. 登录获取 session（必须先登录，后续请求会共享 cookie）
+POST http://localhost:8080/api/user/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "123456"
+}
+
+> {%
+    client.log("登录成功，session 自动维护");
+%}
+
+### 2. 查询所有文档（GET）
+GET http://localhost:8080/api/document/list
+
+### 3. 模糊搜索文档（GET，关键词：Spring）
+GET http://localhost:8080/api/document/search?keyword=Spring
+
+### 4. 添加文档（POST）
+POST http://localhost:8080/api/document/add
+Content-Type: application/json
+
+{
+  "title": "MyBatis 教程",
+  "type": "技术文档",
+  "author": "赵六",
+  "content": "MyBatis 是持久层框架...",
+  "fileSize": 2048
+}
+
+### 5. 修改文档
+PUT http://localhost:8080/api/document/update
+Content-Type: application/json
+
+{
+  "id": 4,
+  "title": "MyBatis 深入浅出",
+  "type": "技术文档",
+  "author": "赵六",
+  "content": "修改后的内容...",
+  "fileSize": 2560
+}
+
+### 6. 软删除单个文档（DELETE，移到回收站）
+DELETE http://localhost:8080/api/document/delete/4
+
+### 7. 批量软删除（DELETE，假设删除 id=2 和 3）
+DELETE http://localhost:8080/api/document/deleteBatch
+Content-Type: application/json
+
+[2, 3]
+
+### 8. 查看回收站列表（GET）
+GET http://localhost:8080/api/document/recycle/list
+
+### 9. 搜索回收站（GET）
+GET http://localhost:8080/api/document/recycle/search?keyword=年度
+
+### 10. 恢复单个文档（PUT）
+PUT http://localhost:8080/api/document/recycle/restore/4
+
+### 11. 批量恢复（PUT）
+PUT http://localhost:8080/api/document/recycle/restoreBatch
+Content-Type: application/json
+
+[2, 3]
+
+### 12. 永久删除单个文档（DELETE）
+DELETE http://localhost:8080/api/document/recycle/permanent/4
+
+### 13. 批量永久删除（DELETE）
+DELETE http://localhost:8080/api/document/recycle/permanentBatch
+Content-Type: application/json
+
+[2, 3]
