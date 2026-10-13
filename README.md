@@ -27,17 +27,17 @@ name:judy;secret:666666
 - AI 智能摘要生成（调用 DeepSeek API）
 
 ## 项目结构
-src/main/java/com/javaee/documentsystem/
-├── common/ # 统一返回格式、密码工具、全局异常处理
-├── config/ # 静态资源映射配置
-├── controller/ # UserController、DocumentController
-├── entity/ # User、Document
-├── mapper/ # UserMapper、DocumentMapper
-└── service/ # UserService、DocumentService
-src/main/resources/
-├── mapper/ # MyBatis XML
-├── static/ # login.html、register.html、main.html
-└── application.properties
+| src/main/java/com/javaee/documentsystem/ |
+| ├── common/ # 统一返回格式、密码工具、全局异常处理|
+| ├── config/ # 静态资源映射配置 |
+| ├── controller/ # UserController、DocumentController |
+| ├── entity/ # User、Document |
+| ├── mapper/ # UserMapper、DocumentMapper |
+| └── service/ # UserService、DocumentService |
+| src/main/resources/ |
+| ├── mapper/ # MyBatis XML |
+| ├── static/ # login.html、register.html、main.html |
+| └── application.properties |
 
 
 ## 如何启动
@@ -46,15 +46,15 @@ src/main/resources/
 
 ```sql
 CREATE DATABASE document_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-2. 导入 SQL 文件
+### 2. 导入 SQL 文件
 导入项目根目录下的 document_system.sql。
-3. 修改配置
+###3. 修改配置
 修改 application.properties 中的数据库密码、Redis 地址、DeepSeek API Key。
-4. 启动 Redis
+###4. 启动 Redis
 确保本地 Redis 已启动（默认端口 6379）。
-5. 启动项目
+###5. 启动项目
 运行 DocumentSystemApplication.java。
-6. 访问
+###6. 访问
 http://localhost:8080/login.html
 
 ## 接口示例
