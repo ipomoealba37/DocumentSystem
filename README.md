@@ -55,7 +55,9 @@ CREATE DATABASE document_system CHARACTER SET utf8mb4;
 
 ### 6. 访问
 
-http://localhost:8080/login.html
+1.http://localhost:8080/login.html
+2. 注册成功后自动跳转登录页
+3. 登录后即可使用文档管理、文件上传、回收站、AI 摘要等功能
 
 ## 接口示例
 
