@@ -56,3 +56,10 @@ CREATE DATABASE document_system CHARACTER SET utf8mb4;
 ### 6. 访问
 
 http://localhost:8080/login.html
+
+## 接口示例
+
+- POST /api/user/login              用户登录
+- POST /api/user/register           用户注册
+- GET  /api/document/list           查询文档列表
+- POST /api/document/add            添加文档
