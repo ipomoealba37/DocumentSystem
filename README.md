@@ -2,7 +2,7 @@
 name:admin;secret:123456
 name:judy;secret:666666
 
-# 文档信息管理系统
+# AI 赋能的多租户文档管理系统
 
 基于 Spring Boot + MyBatis + MySQL 的多用户文档管理平台，支持文件上传、回收站恢复和 AI 智能摘要。
 
@@ -22,6 +22,7 @@ name:judy;secret:666666
 - 文档增删改查、模糊搜索、批量删除
 - 软删除 + 回收站恢复 + 永久删除
 - 文件上传、预览、下载
+- 大文件分片上传：2MB 分片、3 片并发、失败重试、断点续传（不依赖文件 MD5）
 - 多用户数据隔离（每个用户只能操作自己的文档）
 - Redis 缓存文档列表，提升查询性能
 - AI 智能摘要生成（调用 DeepSeek API）
@@ -46,15 +47,35 @@ src/main/resources/
 
 ```sql
 CREATE DATABASE document_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-2. 导入 SQL 文件
-导入项目根目录下的 document_system.sql。
-3. 修改配置
-修改 application.properties 中的数据库密码、Redis 地址、DeepSeek API Key。
-4. 启动 Redis
-确保本地 Redis 已启动（默认端口 6379）。
-5. 启动项目
-运行 DocumentSystemApplication.java。
-6. 访问
+```
+
+### 2. 导入表结构与数据
+
+导入项目根目录下的 `document_system.sql`。
+
+### 3. 准备本地配置
+
+真实的 `application.properties` 和 `.env` 都不入库（里面是数据库密码和 API Key），首次拉代码后从模板复制：
+
+```bash
+copy src\main\resources\application.properties.example src\main\resources\application.properties
+copy .env.example .env
+```
+
+macOS / Linux 用 `cp`。然后在 `.env` 里填 `AI_DEEPSEEK_API_KEY`（`MYSQL_PASSWORD` 默认 123456，按本机改）。
+
+没有 `.env` 也能启动：AI 摘要会提示"未配置"，登录、文档、回收站、分片上传都不受影响。
+
+### 4. 启动 Redis
+
+确保本地 Redis 已启动（默认端口 6379）。没装也可以，启动时加参数 `--spring.cache.type=none` 即可跳过缓存。
+
+### 5. 启动项目
+
+运行 `DocumentSystemApplication.java`。
+
+### 6. 访问
+
 http://localhost:8080/login.html
 
 ## 接口示例
@@ -68,6 +89,10 @@ http://localhost:8080/login.html
 - GET  /api/document/recycle/list    回收站列表
 - PUT  /api/document/recycle/restore/{id}   恢复文档
 - POST /api/ai/summary          AI 生成摘要
+- POST /api/document/upload/init     初始化分片上传（返回分片计划与已传序号）
+- POST /api/document/upload/chunk    上传单个分片
+- POST /api/document/upload/merge    校验并合并分片、写入文档记录
+- POST /api/document/upload/abort    取消上传、清理临时分片
 
 ## 在线访问
 
@@ -76,5 +101,6 @@ http://localhost:8080/login.html
 
 ## 注意
 
-- .gitignore 里要排除 target/、.idea/、*.iml
-- 不要把数据库密码、API Key 提交上去
+- `src/main/resources/application.properties`、`.env` 已被 `.gitignore` 排除，换机器时从同目录的 `*.example` 复制一份
+- 仓库里只有模板，数据库密码、API Key 都不入库
+- `target/`、`.idea/`、`*.iml`、`chunk-temp/` 同样不提交
