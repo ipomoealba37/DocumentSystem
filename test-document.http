@@ -74,3 +74,39 @@ DELETE http://localhost:8080/api/document/recycle/permanentBatch
 Content-Type: application/json
 
 [2, 3]
+
+### 14. 分片上传：初始化（fileKey 用于断点续传，同一次上传要复用同一个值）
+POST http://localhost:8080/api/document/upload/init
+Content-Type: application/x-www-form-urlencoded
+
+fileName=demo.zip&fileSize=104857600&fileKey=demo0001
+
+### 15. 上传单个分片（uploadId 填 init 返回的值，index 从 0 开始）
+POST http://localhost:8080/api/document/upload/chunk
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="uploadId"
+
+6_demo0001
+--WebAppBoundary
+Content-Disposition: form-data; name="index"
+
+0
+--WebAppBoundary
+Content-Disposition: form-data; name="chunk"; filename="0.part"
+
+< ./uploads/187d1b84-2aad-4cc2-8a3e-23269bf927ce.png
+--WebAppBoundary--
+
+### 16. 合并分片并入库（分片不全时会返回 code=400 并说明缺第几片）
+POST http://localhost:8080/api/document/upload/merge
+Content-Type: application/x-www-form-urlencoded
+
+uploadId=6_demo0001&title=大文件测试&type=技术文档&author=测试&content=分片上传
+
+### 17. 取消上传，清理临时分片
+POST http://localhost:8080/api/document/upload/abort
+Content-Type: application/x-www-form-urlencoded
+
+uploadId=6_demo0001

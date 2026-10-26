@@ -29,7 +29,7 @@ public class Result<T> implements Serializable {
 
     //快速返回失败
     public static <T> Result<T> error(String msg){
-        return new Result<>(200,"操作成功",null);
+        return new Result<>(500,msg,null);
     }
 
 

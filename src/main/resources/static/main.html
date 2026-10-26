@@ -140,6 +140,22 @@
                     <div class="form-group">
                         <label>上传文件</label>
                         <input type="file" class="form-control-file" id="docFile" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                        <small class="form-text text-muted">大文件自动分片上传，中断后可续传，单文件上限 512MB</small>
+                    </div>
+                    <!-- 分片上传进度 -->
+                    <div class="form-group d-none" id="uploadProgressBox">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted" id="uploadStatus">准备上传…</small>
+                            <small class="font-weight-bold" id="uploadPercent">0%</small>
+                        </div>
+                        <div class="progress" style="height:10px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                 id="uploadProgressBar" style="width:0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <small class="text-muted" id="uploadDetail">0 KB / 0 KB</small>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-danger" id="cancelUploadBtn">取消上传</button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -163,11 +179,12 @@
         // 默认加载文档管理模块
         loadModule('document');
         // 模态框保存按钮事件
-        $('#saveDocBtn').click(function() {
+        $('#saveDocBtn').click(async function() {
             const id = $('#docId').val();
             const title = $('#docTitle').val();
             const type = $('#docType').val();
             const author = $('#docAuthor').val();
+            const content = $('#docContent').val() || '';
             const fileInput = $('#docFile')[0];
 
             // 简单校验
@@ -188,7 +205,7 @@
                     title: title,
                     type: type,
                     author: author,
-                    content: $('#docContent').val() || ''
+                    content: content
                 };
                 fetch('/api/document/update', {
                     method: 'PUT',
@@ -212,26 +229,46 @@
                 alert('请选择要上传的文件');
                 return;
             }
+            const file = fileInput.files[0];
+            if (file.size > UPLOAD_CONFIG.maxFileSize) {
+                alert('文件过大，单个文件不能超过 ' + formatSize(UPLOAD_CONFIG.maxFileSize));
+                return;
+            }
 
-            // 添加：用 FormData 提交（包含文件）
-            const formData = new FormData();
-            formData.append('title', title);
-            formData.append('type', type);
-            formData.append('author', author);
-            formData.append('file', fileInput.files[0]);
-
-            fetch('/api/document/add', {
-                method: 'POST',
-                body: formData
-            }).then(res => res.json()).then(data => {
-                if (data.code === 200) {
-                    $('#docModal').modal('hide');
-                    alert('添加成功');
-                    loadDocuments();
+            // 添加：走分片上传（小文件就是 1 片），不再受 multipart 10MB 限制
+            setSaving(true);
+            try {
+                await chunkedUpload(file, { title: title, type: type, author: author, content: content });
+                $('#docModal').modal('hide');
+                alert('添加成功');
+                loadDocuments();
+            } catch (err) {
+                if (err && err.cancelled) {
+                    alert('已取消上传');
                 } else {
-                    alert('添加失败：' + (data.msg || data.message));
+                    alert('上传失败：' + (err && err.message ? err.message : err));
                 }
+            } finally {
+                setSaving(false);
+                resetUploadUi();
+            }
+        });
+
+        // 取消上传
+        $('#cancelUploadBtn').click(function() {
+            if (!uploadState) return;
+            uploadState.cancelled = true;
+            $('#uploadStatus').text('正在取消…');
+            // 中断所有在途请求
+            Array.from(uploadState.xhrs).forEach(xhr => {
+                try { xhr.abort(); } catch (e) { }
             });
+            uploadState.xhrs.clear();
+        });
+
+        // 重新选文件时清掉上一次的进度
+        $('#docFile').change(function() {
+            if (!uploadState) resetUploadUi();
         });
 
 
@@ -409,7 +446,8 @@
         $('#docType').val('技术文档');
         $('#docAuthor').val('');
         $('#docContent').val('');
-        $('#docFileSize').val('0');
+        $('#docFile').val('');   // 清掉上一次选的文件
+        resetUploadUi();
         $('#docModal').modal('show');
     }
 
@@ -647,6 +685,257 @@
                 `;
                 $('#statsContent').html(html);
             });
+    }
+
+    // ==================== 分片上传 ====================
+    // 单片大小由服务端在 init 时下发，前端不再写死
+    const UPLOAD_CONFIG = {
+        maxFileSize: 512 * 1024 * 1024, // 与服务端 upload.max-file-size 保持一致
+        concurrency: 3,                 // 同时上传的分片数
+        maxRetry: 3                     // 单片失败重试次数
+    };
+
+    let uploadState = null; // { cancelled, xhrs:Set, uploadId }
+
+    /**
+     * 分片上传主流程：init -> 并发传分片 -> merge
+     * @returns {Promise<object>} 合并后返回的文档对象
+     */
+    async function chunkedUpload(file, meta) {
+        const state = { cancelled: false, xhrs: new Set(), uploadId: null };
+        uploadState = state;
+        showUploadUi();
+        const startAt = Date.now();
+
+        const marks = {};
+
+        // 1. 初始化，拿分片计划（含已上传的分片序号，用于续传）
+        const initRes = await postForm('/api/document/upload/init', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileKey: fileFingerprint(file)
+        });
+        if (!initRes || initRes.code !== 200) {
+            throw new Error((initRes && initRes.msg) || '初始化上传失败');
+        }
+        const { uploadId, chunkSize, totalChunks, uploaded } = initRes.data;
+        state.uploadId = uploadId;
+
+        const loadedMap = new Map(); // 片序号 -> 已上传字节
+        (uploaded || []).forEach(i => loadedMap.set(i, chunkBytes(file, i, chunkSize)));
+
+        const pending = [];
+        for (let i = 0; i < totalChunks; i++) {
+            if (!loadedMap.has(i)) pending.push(i);
+        }
+        const resumed = totalChunks - pending.length;
+        renderProgress(file, loadedMap, totalChunks, startAt, resumed > 0
+            ? `续传中（已完成 ${resumed}/${totalChunks} 片）`
+            : '正在上传…');
+
+        // 2. 并发上传分片，每片独立重试
+        const tasks = pending.map(index => async () => {
+            for (let attempt = 1; attempt <= UPLOAD_CONFIG.maxRetry; attempt++) {
+                if (state.cancelled) throw cancelledError();
+                try {
+                    await uploadOneChunk(file, uploadId, index, chunkSize, loaded => {
+                        loadedMap.set(index, loaded);
+                        renderProgress(file, loadedMap, totalChunks, startAt, '正在上传…');
+                    });
+                    loadedMap.set(index, chunkBytes(file, index, chunkSize));
+                    renderProgress(file, loadedMap, totalChunks, startAt, '正在上传…');
+                    return;
+                } catch (err) {
+                    if (state.cancelled) throw cancelledError();
+                    if (attempt === UPLOAD_CONFIG.maxRetry) {
+                        throw new Error(`第 ${index + 1}/${totalChunks} 片上传失败：${err.message}`);
+                    }
+                    await sleep(300 * attempt);
+                }
+            }
+        });
+
+        try {
+            await runPool(tasks, UPLOAD_CONFIG.concurrency);
+        } catch (err) {
+            if (state.cancelled) {
+                postForm('/api/document/upload/abort', { uploadId }).catch(() => { });
+                throw cancelledError();
+            }
+            throw err;
+        }
+
+        // 3. 合并 + 入库
+        $('#uploadStatus').text('正在合并文件…');
+        const mergeRes = await postForm('/api/document/upload/merge', {
+            uploadId: uploadId,
+            title: meta.title,
+            type: meta.type,
+            author: meta.author || '',
+            content: meta.content || ''
+        });
+        if (!mergeRes || mergeRes.code !== 200) {
+            throw new Error((mergeRes && mergeRes.msg) || '合并文件失败');
+        }
+
+        renderProgress(file, fullLoadedMap(file, totalChunks, chunkSize), totalChunks, startAt, '上传完成');
+        return mergeRes.data;
+    }
+
+    /** 上传单个分片，通过 XHR 拿到片内真实进度 */
+    function uploadOneChunk(file, uploadId, index, chunkSize, onProgress) {
+        return new Promise((resolve, reject) => {
+            const start = index * chunkSize;
+            const blob = file.slice(start, Math.min(start + chunkSize, file.size));
+            const fd = new FormData();
+            fd.append('uploadId', uploadId);
+            fd.append('index', String(index));
+            fd.append('chunk', blob, file.name + '.part');
+
+            const xhr = new XMLHttpRequest();
+            uploadState.xhrs.add(xhr);
+            xhr.open('POST', '/api/document/upload/chunk', true);
+            xhr.withCredentials = true;
+            xhr.upload.onprogress = e => {
+                if (e.lengthComputable) onProgress(e.loaded);
+            };
+            xhr.onload = () => {
+                uploadState.xhrs.delete(xhr);
+                let data = null;
+                try { data = JSON.parse(xhr.responseText); } catch (e) { }
+                if (xhr.status === 200 && data && data.code === 200) {
+                    resolve(data);
+                } else {
+                    reject(new Error((data && data.msg) || ('HTTP ' + xhr.status)));
+                }
+            };
+            xhr.onerror = () => {
+                uploadState.xhrs.delete(xhr);
+                reject(new Error('网络异常'));
+            };
+            xhr.ontimeout = () => {
+                uploadState.xhrs.delete(xhr);
+                reject(new Error('请求超时'));
+            };
+            xhr.send(fd);
+        });
+    }
+
+    /** 简易并发池：最多 limit 个任务同时跑，任意一个失败就停止派发新任务 */
+    async function runPool(tasks, limit) {
+        let cursor = 0;
+        let firstError = null;
+        const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+            while (cursor < tasks.length && !firstError) {
+                const task = tasks[cursor++];
+                try {
+                    await task();
+                } catch (err) {
+                    if (!firstError) firstError = err;
+                }
+            }
+        });
+        await Promise.all(workers);
+        if (firstError) throw firstError;
+    }
+
+    /** 文件指纹：文件名 + 大小 + 修改时间，用来做断点续传的会话标识 */
+    function fileFingerprint(file) {
+        const raw = file.name + '|' + file.size + '|' + (file.lastModified || 0);
+        let h1 = 0x811c9dc5, h2 = 0x1000193;
+        for (let i = 0; i < raw.length; i++) {
+            const c = raw.charCodeAt(i);
+            h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+            h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0;
+        }
+        return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+    }
+
+    function chunkBytes(file, index, chunkSize) {
+        const start = index * chunkSize;
+        return Math.min(chunkSize, file.size - start);
+    }
+
+    function fullLoadedMap(file, totalChunks, chunkSize) {
+        const map = new Map();
+        for (let i = 0; i < totalChunks; i++) map.set(i, chunkBytes(file, i, chunkSize));
+        return map;
+    }
+
+    /** 表单方式调用后端接口（参数放 form-data，避免后端还要 DTO） */
+    async function postForm(url, params) {
+        const res = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: new URLSearchParams(params).toString()
+        });
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error('服务端返回异常（HTTP ' + res.status + '）');
+        }
+    }
+
+    function renderProgress(file, loadedMap, totalChunks, startAt, statusText) {
+        let loaded = 0;
+        loadedMap.forEach(v => { loaded += v; });
+        const percent = Math.min(100, Math.round(loaded / file.size * 100));
+
+        const elapsed = (Date.now() - startAt) / 1000;
+        let speed = '';
+        if (elapsed > 0.5 && loaded > 0 && percent < 100) {
+            speed = ' / ' + formatSize(loaded / elapsed) + '/s';
+        }
+        $('#uploadProgressBar').css('width', percent + '%');
+        $('#uploadPercent').text(percent + '%');
+        $('#uploadStatus').text(statusText || '正在上传…');
+        $('#uploadDetail').text(formatSize(loaded) + ' / ' + formatSize(file.size) + speed
+            + '　共 ' + totalChunks + ' 片');
+        if (percent >= 100) {
+            $('#uploadProgressBar').removeClass('progress-bar-animated');
+        }
+    }
+
+    function showUploadUi() {
+        $('#uploadProgressBox').removeClass('d-none');
+        $('#uploadProgressBar').addClass('progress-bar-animated').css('width', '0%');
+        $('#uploadPercent').text('0%');
+        $('#uploadStatus').text('准备上传…');
+        $('#uploadDetail').text('');
+        $('#cancelUploadBtn').prop('disabled', false);
+        $('#docFile').prop('disabled', true);
+    }
+
+    function resetUploadUi() {
+        uploadState = null;
+        $('#uploadProgressBox').addClass('d-none');
+        $('#uploadProgressBar').css('width', '0%').addClass('progress-bar-animated');
+        $('#docFile').prop('disabled', false);
+        $('#uploadStatus').text('准备上传…');
+        $('#uploadDetail').text('');
+    }
+
+    function setSaving(saving) {
+        $('#saveDocBtn').prop('disabled', saving).text(saving ? '上传中…' : '保存');
+    }
+
+    function sleep(ms) {
+        return new Promise(r => setTimeout(r, ms));
+    }
+
+    function cancelledError() {
+        const err = new Error('已取消上传');
+        err.cancelled = true;
+        return err;
+    }
+
+    function formatSize(bytes) {
+        if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+        return bytes + ' B';
     }
 
     // 辅助函数
