@@ -38,7 +38,8 @@ public final class DotenvLoader {
             return loaded;
         }
         for (String raw : lines) {
-            String line = raw.trim();
+            // 用记事本保存的 UTF-8 会带 BOM，不去掉会让第一个键名变成 "\uFEFFAI_DEEPSEEK_API_KEY" 而读不到
+            String line = raw.startsWith("\uFEFF") ? raw.substring(1).trim() : raw.trim();
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
