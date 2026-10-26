@@ -7,6 +7,12 @@ target/
 ### 运行时目录 ###
 /chunk-temp/
 
+### 用户上传的文件（运行时产生，含个人内容，禁止入库）###
+/uploads/
+
+### 历史遗留：路径拼接 bug 产生的孤儿文件（可安全删除）###
+/uploads3d1a17a5-81c7-4171-b250-7bcd1e26f6e9.png
+
 ### 本地配置（含数据库密码、密钥，禁止入库）###
 # 只忽略真实配置，模板 application.properties.example 仍然入库
 src/main/resources/application.properties
