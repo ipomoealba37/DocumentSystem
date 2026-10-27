@@ -108,10 +108,9 @@ http://localhost:8080/login.html
 - POST /api/document/upload/merge    校验并合并分片、写入文档记录
 - POST /api/document/upload/abort    取消上传、清理临时分片
 
-## 在线访问
+## 部署说明
 
-部署地址：http://47.95.122.184:8080/login.html
-测试账号：admin / 123456
+本项目曾在阿里云 ECS（Linux）完成部署并公网可访问，现因服务器到期下线。可按上文「如何启动」在本地完整运行（只需 JDK 17、MySQL，Redis 可选）。
 
 ## 注意
 
