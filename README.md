@@ -27,6 +27,20 @@ name:judy;secret:666666
 - Redis 缓存文档列表，提升查询性能
 - AI 智能摘要生成（调用 DeepSeek API）
 
+## 界面展示
+
+**登录页**：支持注册、登录，密码 BCrypt 加密存储，登录成功自动跳转到文档管理页。
+
+![登录页](docs/images/login.png)
+
+**文档管理主页**：左侧为文档列表，支持标题/作者/类型模糊搜索、批量删除、图片预览、编辑与下载；右侧为功能导航（文档管理、回收站、统计分析）。
+
+![文档管理](docs/images/document-list.png)
+
+**AI 智能摘要**：选中任意文档一键生成摘要，内容由 DeepSeek 大模型根据文档正文自动提炼。
+
+![AI 摘要](docs/images/ai-summary.png)
+
 ## 项目结构
 src/main/java/com/javaee/documentsystem/
 ├── common/ # 统一返回格式、密码工具、全局异常处理
